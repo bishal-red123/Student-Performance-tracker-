@@ -1,312 +1,421 @@
+"""
+Statistics page for the Student Grading System.
+This page provides detailed statistical analysis of student performance data.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from utils.visualizations import Visualizer
 
 def show():
     """
     Display the statistics page with data analysis and insights.
     """
-    if "dataframe" not in st.session_state or st.session_state.dataframe is None:
-        st.warning("Please upload data on the Home page first.")
+    st.title("Statistics & Analysis")
+    
+    if "students" not in st.session_state or not st.session_state.students:
+        st.warning("No data available. Please upload student data from the Home page.")
         return
     
-    st.title("Statistical Analysis")
-    
-    # Prepare data
-    df = st.session_state.processor.students_to_dataframe(st.session_state.students)
+    # Get processed dataframe
+    processor = st.session_state.processor
+    students_df = processor.students_to_dataframe(st.session_state.students)
     
     # Create tabs for different statistical analyses
-    tab1, tab2, tab3 = st.tabs(["Descriptive Stats", "Distribution Analysis", "Advanced Insights"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Descriptive Statistics", 
+        "Correlation Analysis", 
+        "Performance Gaps",
+        "Grade Analysis"
+    ])
     
-    # Descriptive Stats Tab
+    # Tab 1: Descriptive Statistics
     with tab1:
         st.header("Descriptive Statistics")
+        st.write("This section provides basic statistical measures for all performance metrics.")
         
-        # Add a description
-        st.markdown("""
-        This section provides a statistical summary of student performance across different categories.
-        """)
+        # Calculate descriptive statistics
+        numeric_cols = ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']
+        desc_stats = students_df[numeric_cols].describe().round(2)
         
-        # Summary statistics
-        st.subheader("Summary Statistics")
+        # Rename columns for better readability
+        desc_stats.columns = ['Academic', 'Co-curricular', 'Discipline', 'Overall']
         
-        score_columns = ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']
-        stats_df = df[score_columns].describe().T
+        # Display statistics table
+        st.dataframe(desc_stats)
         
-        # Rename index for better readability
-        stats_df.index = [col.replace('_score', '').title() for col in stats_df.index]
+        # Additional statistics not included in describe()
+        additional_stats = pd.DataFrame({
+            'Metric': ['Variance', 'Skewness', 'Kurtosis', 'Range'],
+            'Academic': [
+                students_df['academic_score'].var().round(2),
+                students_df['academic_score'].skew().round(2),
+                students_df['academic_score'].kurt().round(2),
+                (students_df['academic_score'].max() - students_df['academic_score'].min()).round(2)
+            ],
+            'Co-curricular': [
+                students_df['cocurricular_score'].var().round(2),
+                students_df['cocurricular_score'].skew().round(2),
+                students_df['cocurricular_score'].kurt().round(2),
+                (students_df['cocurricular_score'].max() - students_df['cocurricular_score'].min()).round(2)
+            ],
+            'Discipline': [
+                students_df['discipline_score'].var().round(2),
+                students_df['discipline_score'].skew().round(2),
+                students_df['discipline_score'].kurt().round(2),
+                (students_df['discipline_score'].max() - students_df['discipline_score'].min()).round(2)
+            ],
+            'Overall': [
+                students_df['overall_score'].var().round(2),
+                students_df['overall_score'].skew().round(2),
+                students_df['overall_score'].kurt().round(2),
+                (students_df['overall_score'].max() - students_df['overall_score'].min()).round(2)
+            ]
+        })
         
-        # Format the statistics table
-        formatted_stats = stats_df.copy()
-        for col in formatted_stats.columns:
-            if col != 'count':
-                formatted_stats[col] = formatted_stats[col].round(2)
+        st.write("### Additional Statistics")
+        st.dataframe(additional_stats.set_index('Metric'))
         
-        st.dataframe(formatted_stats, use_container_width=True)
+        # Histograms
+        st.write("### Distribution Visualization")
+        metric = st.selectbox(
+            "Select performance metric",
+            ["academic_score", "cocurricular_score", "discipline_score", "overall_score"],
+            format_func=lambda x: x.replace('_', ' ').title(),
+            key="desc_stats_metric"
+        )
         
-        # Additional statistics
-        st.subheader("Additional Statistics")
+        bins = st.slider("Number of bins", min_value=5, max_value=50, value=20, key="desc_stats_bins")
         
-        # Median, Mode, Range, IQR
-        additional_stats = pd.DataFrame(index=stats_df.index)
-        
-        additional_stats['Median'] = [df[col].median() for col in score_columns]
-        additional_stats['Mode'] = [df[col].mode()[0] for col in score_columns]
-        additional_stats['Range'] = [df[col].max() - df[col].min() for col in score_columns]
-        additional_stats['IQR'] = [df[col].quantile(0.75) - df[col].quantile(0.25) for col in score_columns]
-        additional_stats['Skewness'] = [df[col].skew() for col in score_columns]
-        additional_stats['Kurtosis'] = [df[col].kurt() for col in score_columns]
-        
-        # Format the additional statistics table
-        formatted_additional = additional_stats.copy().round(2)
-        
-        st.dataframe(formatted_additional, use_container_width=True)
-        
-        # Show skewness and kurtosis interpretation
-        st.markdown("""
-        **Interpretation Guide:**
-        
-        **Skewness**:
-        - Values close to 0 indicate symmetric distribution
-        - Positive values indicate right-skewed distribution (tail extends to the right)
-        - Negative values indicate left-skewed distribution (tail extends to the left)
-        
-        **Kurtosis**:
-        - Values close to 0 indicate normal distribution
-        - Positive values indicate heavier tails than normal distribution
-        - Negative values indicate lighter tails than normal distribution
-        """)
-        
-        # Correlation matrix
-        st.subheader("Correlation Matrix")
-        
-        corr_matrix = df[score_columns].corr().round(3)
-        
-        # Rename index and columns for better readability
-        readable_names = [col.replace('_score', '').title() for col in corr_matrix.index]
-        corr_matrix.index = readable_names
-        corr_matrix.columns = readable_names
-        
-        st.dataframe(corr_matrix, use_container_width=True)
-        
-        # Visualization of correlation matrix
-        fig = Visualizer.plot_correlation_matrix(df)
+        fig = Visualizer.plot_score_histogram(students_df, metric, bins=bins)
         st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown("""
-        **Correlation Interpretation**:
-        - Values close to 1 indicate strong positive correlation
-        - Values close to -1 indicate strong negative correlation
-        - Values close to 0 indicate little to no correlation
-        """)
+        # Summary insights
+        st.write("### Key Insights")
+        
+        # Calculate insights
+        highest_mean = desc_stats.loc['mean'].idxmax()
+        lowest_mean = desc_stats.loc['mean'].idxmin()
+        highest_std = desc_stats.loc['std'].idxmax()
+        
+        most_skewed = additional_stats.set_index('Metric').loc['Skewness'].abs().idxmax()
+        skew_value = additional_stats.set_index('Metric').loc['Skewness'][most_skewed]
+        skew_direction = "positively" if skew_value > 0 else "negatively"
+        
+        st.write(f"• Students perform best in **{highest_mean}** with an average score of {desc_stats.loc['mean', highest_mean]:.2f}.")
+        st.write(f"• Students show lowest performance in **{lowest_mean}** with an average score of {desc_stats.loc['mean', lowest_mean]:.2f}.")
+        st.write(f"• The greatest variation is seen in **{highest_std}** scores (std. dev. = {desc_stats.loc['std', highest_std]:.2f}).")
+        st.write(f"• The **{most_skewed}** scores are {skew_direction} skewed ({skew_value:.2f}), indicating {"a longer tail on the upper end" if skew_value > 0 else "a longer tail on the lower end"}.")
     
-    # Distribution Analysis Tab
+    # Tab 2: Correlation Analysis
     with tab2:
-        st.header("Distribution Analysis")
+        st.header("Correlation Analysis")
+        st.write("This section analyzes relationships between different performance metrics.")
         
-        # Score distributions
-        st.subheader("Score Distributions")
+        # Display correlation matrix
+        fig = Visualizer.plot_correlation_matrix(students_df)
+        st.plotly_chart(fig, use_container_width=True)
         
-        # Select which distribution to view
-        selected_score = st.selectbox(
-            "Select Score Category", 
-            score_columns, 
-            format_func=lambda x: x.replace('_score', '').title()
-        )
-        
-        # Create histogram
-        hist_fig = Visualizer.plot_score_histogram(df, selected_score, bins=20)
-        st.plotly_chart(hist_fig, use_container_width=True)
-        
-        # Box plots for score distributions
-        st.subheader("Box Plot Analysis")
-        
-        box_fig = Visualizer.plot_score_comparison(df)
-        st.plotly_chart(box_fig, use_container_width=True)
-        
-        st.markdown("""
-        **Box Plot Interpretation**:
-        - The box represents the interquartile range (IQR) from the 25th to 75th percentile
-        - The line inside the box is the median (50th percentile)
-        - Whiskers typically extend to 1.5 times the IQR
-        - Points beyond the whiskers are potential outliers
-        """)
-        
-        # Grade distributions
-        st.subheader("Grade Distributions")
-        
-        # Select which grade distribution to view
-        grade_columns = ['academic_grade', 'cocurricular_grade', 'discipline_grade', 'overall_grade']
-        selected_grade = st.selectbox(
-            "Select Grade Category", 
-            grade_columns, 
-            format_func=lambda x: x.replace('_grade', '').title()
-        )
-        
-        # Create bar chart
-        grade_fig = Visualizer.plot_grade_distribution(df, selected_grade)
-        st.plotly_chart(grade_fig, use_container_width=True)
-    
-    # Advanced Insights Tab
-    with tab3:
-        st.header("Advanced Insights")
-        
-        # Strengths and weaknesses analysis
-        st.subheader("Strengths and Weaknesses Analysis")
-        
-        # Calculate strengths and weaknesses
-        df['academic_diff'] = df['academic_score'] - df[['academic_score', 'cocurricular_score', 'discipline_score']].mean(axis=1)
-        df['cocurricular_diff'] = df['cocurricular_score'] - df[['academic_score', 'cocurricular_score', 'discipline_score']].mean(axis=1)
-        df['discipline_diff'] = df['discipline_score'] - df[['academic_score', 'cocurricular_score', 'discipline_score']].mean(axis=1)
-        
-        # Determine strength and weakness for each student
-        df['strength'] = df[['academic_diff', 'cocurricular_diff', 'discipline_diff']].idxmax(axis=1)
-        df['weakness'] = df[['academic_diff', 'cocurricular_diff', 'discipline_diff']].idxmin(axis=1)
-        
-        # Clean up the strength and weakness labels
-        df['strength'] = df['strength'].str.replace('_diff', '')
-        df['weakness'] = df['weakness'].str.replace('_diff', '')
-        
-        # Count strengths and weaknesses
-        strength_counts = df['strength'].value_counts().reset_index()
-        strength_counts.columns = ['Category', 'Count']
-        strength_counts['Category'] = strength_counts['Category'].apply(lambda x: x.title())
-        
-        weakness_counts = df['weakness'].value_counts().reset_index()
-        weakness_counts.columns = ['Category', 'Count']
-        weakness_counts['Category'] = weakness_counts['Category'].apply(lambda x: x.title())
-        
-        # Display strengths and weaknesses
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Student Strengths Distribution**")
-            strength_fig = px.pie(
-                strength_counts, 
-                values='Count', 
-                names='Category', 
-                title="Distribution of Student Strengths",
-                color_discrete_sequence=px.colors.sequential.Greens
-            )
-            st.plotly_chart(strength_fig, use_container_width=True)
-        
-        with col2:
-            st.markdown("**Student Weaknesses Distribution**")
-            weakness_fig = px.pie(
-                weakness_counts, 
-                values='Count', 
-                names='Category', 
-                title="Distribution of Student Weaknesses",
-                color_discrete_sequence=px.colors.sequential.Reds
-            )
-            st.plotly_chart(weakness_fig, use_container_width=True)
-        
-        # Balance analysis
-        st.subheader("Performance Balance Analysis")
-        
-        # Calculate standard deviation of scores for each student
-        df['score_std'] = df[['academic_score', 'cocurricular_score', 'discipline_score']].std(axis=1)
-        
-        # Create histogram of standard deviations
-        balance_fig = px.histogram(
-            df, 
-            x='score_std',
-            nbins=20,
-            title="Distribution of Performance Balance",
-            labels={'score_std': 'Standard Deviation of Scores', 'count': 'Number of Students'}
-        )
-        st.plotly_chart(balance_fig, use_container_width=True)
-        
-        st.markdown("""
-        **Balance Interpretation**:
-        - Lower standard deviation indicates more balanced performance across categories
-        - Higher standard deviation indicates more variability between categories
-        """)
-        
-        # Top 5 most balanced and unbalanced students
-        st.subheader("Most Balanced vs. Most Unbalanced Students")
+        # Scatter plot for relationship exploration
+        st.write("### Explore Relationships")
+        st.write("Select two metrics to visualize their relationship:")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Most Balanced Students**")
-            balanced_df = df.sort_values('score_std').head(5)
-            st.dataframe(balanced_df[['name', 'academic_score', 'cocurricular_score', 
-                                     'discipline_score', 'score_std']], use_container_width=True)
+            x_metric = st.selectbox(
+                "X-axis metric",
+                ["academic_score", "cocurricular_score", "discipline_score"],
+                format_func=lambda x: x.replace('_', ' ').title(),
+                key="corr_x_metric"
+            )
         
         with col2:
-            st.markdown("**Most Unbalanced Students**")
-            unbalanced_df = df.sort_values('score_std', ascending=False).head(5)
-            st.dataframe(unbalanced_df[['name', 'academic_score', 'cocurricular_score', 
-                                      'discipline_score', 'score_std']], use_container_width=True)
+            y_metric = st.selectbox(
+                "Y-axis metric",
+                ["academic_score", "cocurricular_score", "discipline_score", "overall_score"],
+                index=3,
+                format_func=lambda x: x.replace('_', ' ').title(),
+                key="corr_y_metric"
+            )
+        
+        color_by = st.selectbox(
+            "Color points by grade",
+            [None, "academic_grade", "cocurricular_grade", "discipline_grade", "overall_grade"],
+            format_func=lambda x: x.replace('_', ' ').title() if x else "No Color Coding",
+            key="corr_color"
+        )
+        
+        fig = Visualizer.plot_scatter_comparison(
+            students_df, 
+            x_metric, 
+            y_metric,
+            color_column=color_by
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Calculate correlation coefficient
+        corr = students_df[x_metric].corr(students_df[y_metric])
+        
+        # Interpretation of correlation
+        st.write(f"**Correlation coefficient:** {corr:.4f}")
+        
+        if abs(corr) < 0.3:
+            st.write("**Interpretation:** There is a weak correlation between these metrics.")
+        elif abs(corr) < 0.7:
+            st.write("**Interpretation:** There is a moderate correlation between these metrics.")
+        else:
+            st.write("**Interpretation:** There is a strong correlation between these metrics.")
         
         # Correlation insights
-        st.subheader("Relationship Insights")
+        st.write("### Key Insights")
         
-        # Scatter plot with regression line
-        x_metric = st.selectbox("X-Axis", score_columns, format_func=lambda x: x.replace('_score', '').title(), index=0)
-        y_metric = st.selectbox("Y-Axis", score_columns, format_func=lambda x: x.replace('_score', '').title(), index=3)
+        # Calculate all pairwise correlations
+        corr_matrix = students_df[numeric_cols].corr()
         
-        scatter_fig = px.scatter(
-            df,
-            x=x_metric,
-            y=y_metric,
-            trendline="ols",
-            trendline_color_override="red",
-            hover_name='name',
-            title=f"{y_metric.replace('_score', '').title()} vs {x_metric.replace('_score', '').title()} with Trend Line",
-            labels={
-                x_metric: x_metric.replace('_score', '').title(),
-                y_metric: y_metric.replace('_score', '').title()
-            }
+        # Find the strongest correlation (excluding self-correlations)
+        corr_matrix_no_self = corr_matrix.copy()
+        np.fill_diagonal(corr_matrix_no_self.values, 0)
+        max_corr_idx = corr_matrix_no_self.abs().stack().idxmax()
+        max_corr = corr_matrix.loc[max_corr_idx]
+        
+        # Find the weakest correlation
+        min_corr_idx = corr_matrix.abs().replace(0, 1).stack().idxmin()
+        min_corr = corr_matrix.loc[min_corr_idx]
+        
+        # Format metric names for readability
+        metric_names = {
+            'academic_score': 'Academic',
+            'cocurricular_score': 'Co-curricular',
+            'discipline_score': 'Discipline',
+            'overall_score': 'Overall'
+        }
+        
+        max_corr_formatted = (metric_names[max_corr_idx[0]], metric_names[max_corr_idx[1]])
+        min_corr_formatted = (metric_names[min_corr_idx[0]], metric_names[min_corr_idx[1]])
+        
+        st.write(f"• The strongest relationship is between **{max_corr_formatted[0]}** and **{max_corr_formatted[1]}** scores (r = {max_corr:.4f}).")
+        st.write(f"• The weakest relationship is between **{min_corr_formatted[0]}** and **{min_corr_formatted[1]}** scores (r = {min_corr:.4f}).")
+        
+        # Calculate which metric has the strongest correlation with overall score
+        overall_corrs = corr_matrix['overall_score'].drop('overall_score')
+        strongest_predictor = overall_corrs.abs().idxmax()
+        strongest_corr = overall_corrs[strongest_predictor]
+        
+        st.write(f"• **{metric_names[strongest_predictor]}** is the strongest predictor of overall performance (r = {strongest_corr:.4f}).")
+        
+        if strongest_corr > 0.8:
+            st.write("• This suggests the grading system might be placing too much weight on this category.")
+    
+    # Tab 3: Performance Gaps
+    with tab3:
+        st.header("Performance Gaps")
+        st.write("This section analyzes gaps in student performance across different metrics.")
+        
+        # Calculate performance gaps for each student
+        students_df['academic_cocurricular_gap'] = (students_df['academic_score'] - students_df['cocurricular_score']).abs()
+        students_df['academic_discipline_gap'] = (students_df['academic_score'] - students_df['discipline_score']).abs()
+        students_df['cocurricular_discipline_gap'] = (students_df['cocurricular_score'] - students_df['discipline_score']).abs()
+        
+        # Calculate the maximum gap for each student
+        students_df['max_gap'] = students_df[['academic_cocurricular_gap', 'academic_discipline_gap', 'cocurricular_discipline_gap']].max(axis=1)
+        
+        # Display distribution of maximum gaps
+        st.write("### Distribution of Maximum Performance Gaps")
+        fig = Visualizer.plot_score_histogram(students_df, 'max_gap', bins=15, title='Distribution of Maximum Performance Gaps')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Statistics about gaps
+        avg_max_gap = students_df['max_gap'].mean()
+        median_max_gap = students_df['max_gap'].median()
+        max_max_gap = students_df['max_gap'].max()
+        
+        st.write(f"• Average maximum gap: {avg_max_gap:.2f} points")
+        st.write(f"• Median maximum gap: {median_max_gap:.2f} points")
+        st.write(f"• Largest maximum gap: {max_max_gap:.2f} points")
+        
+        # Identify students with the largest gaps
+        st.write("### Students with Largest Performance Gaps")
+        
+        # Get top 5 students with largest gaps
+        top_gap_students = students_df.sort_values('max_gap', ascending=False).head(5)
+        
+        # Create dataframe for display
+        gap_display = pd.DataFrame({
+            'Student Name': top_gap_students['name'],
+            'Academic Score': top_gap_students['academic_score'].round(2),
+            'Co-curricular Score': top_gap_students['cocurricular_score'].round(2),
+            'Discipline Score': top_gap_students['discipline_score'].round(2),
+            'Maximum Gap': top_gap_students['max_gap'].round(2)
+        })
+        
+        st.dataframe(gap_display)
+        
+        # Identify students with the most balanced performance
+        st.write("### Students with Most Balanced Performance")
+        
+        # Get top 5 students with smallest gaps
+        balanced_students = students_df.sort_values('max_gap').head(5)
+        
+        # Create dataframe for display
+        balanced_display = pd.DataFrame({
+            'Student Name': balanced_students['name'],
+            'Academic Score': balanced_students['academic_score'].round(2),
+            'Co-curricular Score': balanced_students['cocurricular_score'].round(2),
+            'Discipline Score': balanced_students['discipline_score'].round(2),
+            'Maximum Gap': balanced_students['max_gap'].round(2)
+        })
+        
+        st.dataframe(balanced_display)
+        
+        # Gap analysis
+        st.write("### Gap Analysis")
+        
+        # Calculate the most common type of gap
+        gap_types = {
+            'Academic-Cocurricular': (students_df['academic_cocurricular_gap'] == students_df['max_gap']).sum(),
+            'Academic-Discipline': (students_df['academic_discipline_gap'] == students_df['max_gap']).sum(),
+            'Cocurricular-Discipline': (students_df['cocurricular_discipline_gap'] == students_df['max_gap']).sum()
+        }
+        
+        most_common_gap = max(gap_types.items(), key=lambda x: x[1])[0]
+        most_common_count = gap_types[most_common_gap]
+        most_common_percent = (most_common_count / len(students_df)) * 100
+        
+        st.write(f"• The most common maximum gap is between **{most_common_gap.replace('-', ' and ')}** ({most_common_percent:.1f}% of students).")
+        
+        # Calculate percentage of students with significant gaps (>20 points)
+        significant_gap_count = (students_df['max_gap'] > 20).sum()
+        significant_gap_percent = (significant_gap_count / len(students_df)) * 100
+        
+        st.write(f"• {significant_gap_percent:.1f}% of students have significant performance gaps (>20 points difference).")
+    
+    # Tab 4: Grade Analysis
+    with tab4:
+        st.header("Grade Analysis")
+        st.write("This section analyzes the distribution and relationships between grades.")
+        
+        # Grade distribution for each category
+        st.write("### Grade Distribution by Category")
+        
+        # Create a dataframe with grade counts for each category
+        grade_counts = {}
+        
+        for col, name in zip(['academic_grade', 'cocurricular_grade', 'discipline_grade', 'overall_grade'],
+                           ['Academic', 'Co-curricular', 'Discipline', 'Overall']):
+            grade_counts[name] = students_df[col].value_counts().sort_index()
+        
+        grade_distribution = pd.DataFrame(grade_counts)
+        
+        # Fill missing grades with 0
+        all_grades = sorted(set().union(*[grade_counts[cat].index for cat in grade_counts]))
+        for grade in all_grades:
+            for category in grade_counts:
+                if grade not in grade_counts[category]:
+                    grade_counts[category][grade] = 0
+        
+        # Recreate dataframe with all grades for all categories
+        grade_distribution = pd.DataFrame({cat: grade_counts[cat].sort_index() for cat in grade_counts})
+        
+        # Display the distribution
+        st.dataframe(grade_distribution)
+        
+        # Visualize grade distribution
+        st.write("### Grade Distribution Visualization")
+        
+        grade_category = st.selectbox(
+            "Select grade category",
+            ["academic_grade", "cocurricular_grade", "discipline_grade", "overall_grade"],
+            format_func=lambda x: x.replace('_', ' ').title(),
+            key="grade_dist_category"
         )
-        st.plotly_chart(scatter_fig, use_container_width=True)
         
-        # Calculate and display correlation value
-        correlation = df[x_metric].corr(df[y_metric])
-        st.markdown(f"**Correlation coefficient**: {correlation:.3f}")
+        fig = Visualizer.plot_grade_distribution(students_df, grade_category)
+        st.plotly_chart(fig, use_container_width=True)
         
-        # Provide interpretation of correlation
-        if abs(correlation) < 0.3:
-            st.markdown("**Interpretation**: Weak correlation - these performance areas show little relationship.")
-        elif abs(correlation) < 0.7:
-            st.markdown("**Interpretation**: Moderate correlation - these performance areas show some relationship.")
+        # Grade correlations
+        st.write("### Grade Consistency Analysis")
+        
+        # Calculate number of students with consistent grades across all categories
+        students_df['consistent_grades'] = (
+            (students_df['academic_grade'] == students_df['cocurricular_grade']) & 
+            (students_df['academic_grade'] == students_df['discipline_grade'])
+        )
+        
+        consistent_count = students_df['consistent_grades'].sum()
+        consistent_percent = (consistent_count / len(students_df)) * 100
+        
+        st.write(f"• {consistent_count} students ({consistent_percent:.1f}%) have consistent grades across all three categories.")
+        
+        # Calculate number of students with same overall grade as their predominant category grade
+        students_df['matches_overall'] = (
+            (students_df['academic_grade'] == students_df['overall_grade']) | 
+            (students_df['cocurricular_grade'] == students_df['overall_grade']) | 
+            (students_df['discipline_grade'] == students_df['overall_grade'])
+        )
+        
+        matches_count = students_df['matches_overall'].sum()
+        matches_percent = (matches_count / len(students_df)) * 100
+        
+        st.write(f"• {matches_count} students ({matches_percent:.1f}%) have an overall grade that matches at least one of their category grades.")
+        
+        # Calculate which category most commonly matches overall grade
+        academic_matches = (students_df['academic_grade'] == students_df['overall_grade']).sum()
+        cocurricular_matches = (students_df['cocurricular_grade'] == students_df['overall_grade']).sum()
+        discipline_matches = (students_df['discipline_grade'] == students_df['overall_grade']).sum()
+        
+        matches = {
+            'Academic': academic_matches,
+            'Co-curricular': cocurricular_matches,
+            'Discipline': discipline_matches
+        }
+        
+        most_matched = max(matches.items(), key=lambda x: x[1])[0]
+        most_matched_count = matches[most_matched]
+        most_matched_percent = (most_matched_count / len(students_df)) * 100
+        
+        st.write(f"• The **{most_matched}** grade most frequently matches the overall grade ({most_matched_percent:.1f}% of students).")
+        
+        # Check for grade inflation/deflation
+        st.write("### Grade Inflation/Deflation Analysis")
+        
+        # Calculate average numerical scores for each letter grade
+        grade_score_mapping = {}
+        
+        for grade in all_grades:
+            grade_mask = students_df['overall_grade'] == grade
+            if grade_mask.any():
+                avg_score = students_df.loc[grade_mask, 'overall_score'].mean()
+                grade_score_mapping[grade] = avg_score
+        
+        # Create dataframe for display
+        grade_scores = pd.DataFrame({
+            'Grade': list(grade_score_mapping.keys()),
+            'Average Score': [round(score, 2) for score in grade_score_mapping.values()]
+        }).sort_values('Grade')
+        
+        st.dataframe(grade_scores)
+        
+        # Calculate grade boundaries from the data
+        st.write("### Inferred Grade Boundaries")
+        
+        # Sort grades by average score
+        sorted_grades = sorted(grade_score_mapping.items(), key=lambda x: x[1])
+        
+        # Calculate boundaries between consecutive grades
+        boundaries = []
+        for i in range(len(sorted_grades) - 1):
+            current_grade, current_score = sorted_grades[i]
+            next_grade, next_score = sorted_grades[i + 1]
+            boundary = (current_score + next_score) / 2
+            boundaries.append({
+                'Lower Grade': current_grade,
+                'Upper Grade': next_grade,
+                'Approximate Boundary': round(boundary, 2)
+            })
+        
+        if boundaries:
+            st.dataframe(pd.DataFrame(boundaries))
         else:
-            st.markdown("**Interpretation**: Strong correlation - these performance areas show a significant relationship.")
-        
-        # Suggestions based on analysis
-        st.subheader("Improvement Suggestions")
-        
-        # Generate suggestions based on data patterns
-        suggestions = []
-        
-        # Academic vs Co-curricular correlation
-        ac_cc_corr = df['academic_score'].corr(df['cocurricular_score'])
-        if ac_cc_corr > 0.5:
-            suggestions.append("Consider integrating academic concepts with co-curricular activities as they show positive correlation.")
-        elif ac_cc_corr < -0.3:
-            suggestions.append("Students might be focusing too much on either academics or co-curricular activities at the expense of the other.")
-        
-        # Balance analysis
-        avg_std = df['score_std'].mean()
-        if avg_std > 15:
-            suggestions.append("Many students show significant imbalance across performance areas. Consider implementing a more holistic development approach.")
-        
-        # Weaknesses pattern
-        if 'academic' in df['weakness'].values.tolist() and df['weakness'].value_counts().get('academic', 0) > len(df) * 0.4:
-            suggestions.append("A significant portion of students show weakness in academics. Consider reviewing teaching methodologies and providing additional support.")
-        
-        if 'cocurricular' in df['weakness'].values.tolist() and df['weakness'].value_counts().get('cocurricular', 0) > len(df) * 0.4:
-            suggestions.append("Many students are underperforming in co-curricular activities. Consider expanding options or making these activities more engaging.")
-        
-        if 'discipline' in df['weakness'].values.tolist() and df['weakness'].value_counts().get('discipline', 0) > len(df) * 0.4:
-            suggestions.append("Discipline appears to be a common weakness. Consider implementing clearer behavior guidelines and positive reinforcement strategies.")
-        
-        # Display suggestions
-        if suggestions:
-            for i, suggestion in enumerate(suggestions, 1):
-                st.markdown(f"{i}. {suggestion}")
-        else:
-            st.markdown("No specific improvement suggestions based on current data patterns.")
+            st.write("Insufficient data to infer grade boundaries.")

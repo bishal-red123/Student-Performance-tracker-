@@ -1,188 +1,258 @@
+"""
+Student profiles page for the Student Grading System.
+This page allows viewing and analyzing individual student profiles.
+"""
+
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from utils.visualizations import Visualizer
 
 def show():
     """
     Display the student profiles page for individual student analysis.
     """
-    if "dataframe" not in st.session_state or st.session_state.dataframe is None:
-        st.warning("Please upload data on the Home page first.")
-        return
-    
     st.title("Student Profiles")
     
-    # Prepare data
-    df = st.session_state.processor.students_to_dataframe(st.session_state.students)
+    if "students" not in st.session_state or not st.session_state.students:
+        st.warning("No data available. Please upload student data from the Home page.")
+        return
     
-    # Create a sidebar for student selection
-    st.sidebar.subheader("Student Selection")
+    # Get processed dataframe
+    processor = st.session_state.processor
+    students_df = processor.students_to_dataframe(st.session_state.students)
     
-    # Search by name
-    search_name = st.sidebar.text_input("Search by Name")
+    # Student selection
+    st.subheader("Select a Student")
     
-    # Filter by grade
-    st.sidebar.subheader("Filter Options")
-    selected_grade = st.sidebar.multiselect(
-        "Filter by Overall Grade",
-        options=sorted(df['overall_grade'].unique()),
-        default=[]
+    # Get list of names and IDs for selection
+    student_names = sorted(students_df['name'].tolist())
+    student_ids = sorted([str(id) for id in students_df['student_id'].tolist()])
+    
+    # Two methods of selection: by ID or by name
+    selection_method = st.radio(
+        "Selection method",
+        ["Select by Name", "Select by ID"],
+        horizontal=True
     )
     
-    # Apply filters to the dataframe
-    filtered_df = df.copy()
+    selected_student = None
     
-    if search_name:
-        filtered_df = filtered_df[filtered_df['name'].str.contains(search_name, case=False)]
-    
-    if selected_grade:
-        filtered_df = filtered_df[filtered_df['overall_grade'].isin(selected_grade)]
-    
-    # Display filtered student list
-    st.sidebar.subheader("Student List")
-    if len(filtered_df) == 0:
-        st.sidebar.info("No students match the filters.")
-    else:
-        selected_student_name = st.sidebar.selectbox(
-            "Select Student",
-            options=filtered_df['name'].tolist(),
-            index=0
-        )
+    if selection_method == "Select by Name":
+        selected_name = st.selectbox("Select student name", student_names)
+        selected_student = students_df[students_df['name'] == selected_name].iloc[0]
         
-        # Find the selected student
-        selected_student_data = filtered_df[filtered_df['name'] == selected_student_name].iloc[0]
-        selected_student = next(
-            (s for s in st.session_state.students if s.name == selected_student_name), 
+    else:  # Select by ID
+        selected_id = st.selectbox("Select student ID", student_ids)
+        selected_student = students_df[students_df['student_id'].astype(str) == selected_id].iloc[0]
+    
+    # Display student profile
+    if selected_student is not None:
+        st.subheader(f"Profile for {selected_student['name']}")
+        
+        # Create two columns for basic info and grade summary
+        col1, col2 = st.columns(2)
+        
+        # Basic information
+        with col1:
+            st.write("#### Basic Information")
+            st.write(f"**Student ID:** {selected_student['student_id']}")
+            st.write(f"**Name:** {selected_student['name']}")
+            
+            # Display any additional attributes the student may have
+            for key, value in selected_student.items():
+                if key not in ['student_id', 'name', 'academic_score', 'cocurricular_score',
+                              'discipline_score', 'overall_score', 'academic_grade',
+                              'cocurricular_grade', 'discipline_grade', 'overall_grade']:
+                    # Skip NaN values and internal attributes
+                    if pd.notna(value) and not key.startswith('_'):
+                        st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+        
+        # Grade summary
+        with col2:
+            st.write("#### Performance Summary")
+            st.write(f"**Overall Grade:** {selected_student['overall_grade']}")
+            st.write(f"**Overall Score:** {selected_student['overall_score']:.2f}")
+            
+            # Create a grades and scores table
+            grades_data = {
+                "Category": ["Academic", "Co-curricular", "Discipline"],
+                "Score": [
+                    f"{selected_student['academic_score']:.2f}",
+                    f"{selected_student['cocurricular_score']:.2f}",
+                    f"{selected_student['discipline_score']:.2f}"
+                ],
+                "Grade": [
+                    selected_student['academic_grade'],
+                    selected_student['cocurricular_grade'],
+                    selected_student['discipline_grade']
+                ]
+            }
+            
+            grades_df = pd.DataFrame(grades_data)
+            st.table(grades_df)
+        
+        # Performance radar chart
+        st.subheader("Performance Profile")
+        
+        # Get the student object from session state
+        student_obj = next(
+            (s for s in st.session_state.students 
+             if str(s.student_id) == str(selected_student['student_id'])),
             None
         )
         
-        if selected_student:
-            # Display student profile
-            st.header(f"Profile: {selected_student.name}")
+        if student_obj:
+            radar_chart = Visualizer.plot_student_radar(student_obj)
+            st.plotly_chart(radar_chart, use_container_width=True)
+        
+        # Comparative analysis
+        st.subheader("Comparative Analysis")
+        
+        # Compare with average, top student, and bottom student
+        avg_student = students_df.mean()
+        top_student = students_df.loc[students_df['overall_score'].idxmax()]
+        
+        # Create comparison dataframe
+        comparison_data = {
+            "Metric": ["Academic Score", "Co-curricular Score", "Discipline Score", "Overall Score"],
+            f"{selected_student['name']}": [
+                selected_student['academic_score'],
+                selected_student['cocurricular_score'],
+                selected_student['discipline_score'],
+                selected_student['overall_score']
+            ],
+            "Class Average": [
+                avg_student['academic_score'],
+                avg_student['cocurricular_score'],
+                avg_student['discipline_score'],
+                avg_student['overall_score']
+            ],
+            f"Top Student ({top_student['name']})": [
+                top_student['academic_score'],
+                top_student['cocurricular_score'],
+                top_student['discipline_score'],
+                top_student['overall_score']
+            ]
+        }
+        
+        comparison_df = pd.DataFrame(comparison_data)
+        st.table(comparison_df)
+        
+        # Calculate and display percentile rankings
+        st.subheader("Percentile Rankings")
+        
+        # Calculate percentiles for each score category
+        percentiles = {}
+        
+        for category in ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']:
+            # Calculate the number of students with lower scores
+            count_lower = (students_df[category] < selected_student[category]).sum()
             
-            # Student ID and basic info
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Student ID", selected_student.student_id)
+            # Calculate percentile
+            percentile = (count_lower / len(students_df)) * 100
             
-            # Check if class and section are available
-            if 'class' in selected_student.attributes:
-                col2.metric("Class", selected_student.get_attribute('class'))
+            # Store in dictionary
+            percentiles[category] = percentile
+        
+        # Display percentiles
+        percentile_data = {
+            "Category": ["Academic", "Co-curricular", "Discipline", "Overall"],
+            "Percentile": [
+                f"{percentiles['academic_score']:.1f}%",
+                f"{percentiles['cocurricular_score']:.1f}%",
+                f"{percentiles['discipline_score']:.1f}%",
+                f"{percentiles['overall_score']:.1f}%"
+            ]
+        }
+        
+        percentile_df = pd.DataFrame(percentile_data)
+        st.table(percentile_df)
+        
+        # Comparative radar with peers
+        st.subheader("Compare with Peers")
+        
+        # Allow selecting peers for comparison
+        peer_selection = st.multiselect(
+            "Select peers to compare with",
+            [name for name in student_names if name != selected_student['name']],
+            max_selections=3
+        )
+        
+        if peer_selection:
+            # Get student objects for the selected peers
+            peer_objs = [
+                next((s for s in st.session_state.students if s.name == name), None)
+                for name in peer_selection
+            ]
             
-            if 'section' in selected_student.attributes:
-                col3.metric("Section", selected_student.get_attribute('section'))
+            # Filter out any None values
+            peer_objs = [p for p in peer_objs if p is not None]
             
-            # Performance summary
-            st.subheader("Performance Summary")
-            
-            # Create columns for the different performance metrics
-            cols = st.columns(4)
-            
-            with cols[0]:
-                st.markdown("**Academic**")
-                st.metric("Score", f"{selected_student.academic_score:.1f}")
-                st.metric("Grade", selected_student.academic_grade)
-            
-            with cols[1]:
-                st.markdown("**Co-curricular**")
-                st.metric("Score", f"{selected_student.cocurricular_score:.1f}")
-                st.metric("Grade", selected_student.cocurricular_grade)
-            
-            with cols[2]:
-                st.markdown("**Discipline**")
-                st.metric("Score", f"{selected_student.discipline_score:.1f}")
-                st.metric("Grade", selected_student.discipline_grade)
-            
-            with cols[3]:
-                st.markdown("**Overall**")
-                st.metric("Score", f"{selected_student.overall_score:.1f}")
-                st.metric("Grade", selected_student.overall_grade)
-            
-            # Radar chart
-            st.subheader("Performance Profile")
-            radar_fig = Visualizer.plot_student_radar(selected_student)
-            st.plotly_chart(radar_fig, use_container_width=True)
-            
-            # Additional attributes
-            st.subheader("Additional Information")
-            
-            additional_attrs = {k: v for k, v in selected_student.attributes.items()
-                              if k not in ['class', 'section']}
-            
-            if additional_attrs:
-                attr_df = pd.DataFrame({
-                    'Attribute': additional_attrs.keys(),
-                    'Value': additional_attrs.values()
-                })
-                st.dataframe(attr_df, use_container_width=True)
-            else:
-                st.info("No additional information available.")
-            
-            # Performance comparison with class average
-            st.subheader("Comparison with Class Average")
-            
-            # Calculate class averages
-            class_avg = {
-                'Academic': df['academic_score'].mean(),
-                'Co-curricular': df['cocurricular_score'].mean(),
-                'Discipline': df['discipline_score'].mean(),
-                'Overall': df['overall_score'].mean()
-            }
-            
-            student_scores = {
-                'Academic': selected_student.academic_score,
-                'Co-curricular': selected_student.cocurricular_score,
-                'Discipline': selected_student.discipline_score,
-                'Overall': selected_student.overall_score
-            }
-            
-            # Create dataframe for comparison
-            comparison_data = {
-                'Category': list(class_avg.keys()),
-                'Student Score': list(student_scores.values()),
-                'Class Average': list(class_avg.values())
-            }
-            comparison_df = pd.DataFrame(comparison_data)
-            
-            # Create a bar chart for comparison
-            comparison_fig = px.bar(
-                comparison_df,
-                x='Category',
-                y=['Student Score', 'Class Average'],
-                barmode='group',
-                title=f"Performance Comparison: {selected_student.name} vs. Class Average",
-                labels={'value': 'Score', 'variable': ''}
-            )
-            
-            st.plotly_chart(comparison_fig, use_container_width=True)
-            
-            # Ranking information
-            st.subheader("Class Ranking")
-            
-            # Calculate rankings
-            academic_rank = df.sort_values('academic_score', ascending=False)['name'].tolist().index(selected_student.name) + 1
-            cocurr_rank = df.sort_values('cocurricular_score', ascending=False)['name'].tolist().index(selected_student.name) + 1
-            discipline_rank = df.sort_values('discipline_score', ascending=False)['name'].tolist().index(selected_student.name) + 1
-            overall_rank = df.sort_values('overall_score', ascending=False)['name'].tolist().index(selected_student.name) + 1
-            
-            # Display rankings
-            rank_cols = st.columns(4)
-            total_students = len(df)
-            
-            rank_cols[0].metric("Academic Rank", f"{academic_rank}/{total_students}")
-            rank_cols[1].metric("Co-curricular Rank", f"{cocurr_rank}/{total_students}")
-            rank_cols[2].metric("Discipline Rank", f"{discipline_rank}/{total_students}")
-            rank_cols[3].metric("Overall Rank", f"{overall_rank}/{total_students}")
-            
-            # Percentile calculation
-            academic_percentile = round((total_students - academic_rank) / total_students * 100, 1)
-            cocurr_percentile = round((total_students - cocurr_rank) / total_students * 100, 1)
-            discipline_percentile = round((total_students - discipline_rank) / total_students * 100, 1)
-            overall_percentile = round((total_students - overall_rank) / total_students * 100, 1)
-            
-            st.write("**Percentile Ranking:**")
-            percentile_cols = st.columns(4)
-            percentile_cols[0].metric("Academic", f"{academic_percentile}%")
-            percentile_cols[1].metric("Co-curricular", f"{cocurr_percentile}%")
-            percentile_cols[2].metric("Discipline", f"{discipline_percentile}%")
-            percentile_cols[3].metric("Overall", f"{overall_percentile}%")
+            # Only proceed if we have valid peer objects
+            if peer_objs:
+                # Create a list with the selected student first, then the peers
+                comparison_students = [student_obj] + peer_objs
+                
+                # Create comparative radar chart
+                radar_chart = Visualizer.plot_comparative_radar(comparison_students)
+                st.plotly_chart(radar_chart, use_container_width=True)
+        
+        # Recommendations section
+        st.subheader("Recommendations")
+        
+        # Generate recommendations based on scores
+        recommendations = []
+        
+        # Academic recommendations
+        if selected_student['academic_score'] < 60:
+            recommendations.append("Consider arranging academic intervention or additional tutoring.")
+        elif selected_student['academic_score'] < 75:
+            recommendations.append("Academic performance needs improvement. Suggest focused study in weak areas.")
+        elif selected_student['academic_score'] < 90:
+            recommendations.append("Good academic performance with room for improvement in specific subjects.")
+        else:
+            recommendations.append("Excellent academic performance. Consider advanced/enrichment programs.")
+        
+        # Co-curricular recommendations
+        if selected_student['cocurricular_score'] < 60:
+            recommendations.append("Encourage participation in more co-curricular activities to develop soft skills.")
+        elif selected_student['cocurricular_score'] < 75:
+            recommendations.append("Consider guiding the student towards activities that align with their interests.")
+        elif selected_student['cocurricular_score'] < 90:
+            recommendations.append("Good co-curricular involvement. Consider leadership roles in current activities.")
+        else:
+            recommendations.append("Excellent co-curricular involvement. Encourage mentoring junior students.")
+        
+        # Discipline recommendations
+        if selected_student['discipline_score'] < 60:
+            recommendations.append("Behavior needs significant improvement. Consider behavioral intervention.")
+        elif selected_student['discipline_score'] < 75:
+            recommendations.append("Occasional behavioral issues. Regular counseling might be beneficial.")
+        elif selected_student['discipline_score'] < 90:
+            recommendations.append("Generally good behavior with minor concerns. Positive reinforcement recommended.")
+        else:
+            recommendations.append("Excellent discipline record. Consider student for prefect/monitor roles.")
+        
+        # Display recommendations
+        for recommendation in recommendations:
+            st.write(f"• {recommendation}")
+        
+        # Personalized recommendation based on overall profile
+        st.write("#### Personalized Recommendation:")
+        
+        # Identify the lowest scoring area
+        scores = {
+            "Academic": float(selected_student['academic_score']),
+            "Co-curricular": float(selected_student['cocurricular_score']),
+            "Discipline": float(selected_student['discipline_score'])
+        }
+        
+        # Find lowest and highest scoring areas
+        lowest_area = min(scores.items(), key=lambda x: x[1])[0]
+        highest_area = max(scores.items(), key=lambda x: x[1])[0]
+        
+        if max(scores.values()) - min(scores.values()) > 20:
+            st.write(f"The student shows a significant gap between {highest_area} ({scores[highest_area]:.1f}) and {lowest_area} ({scores[lowest_area]:.1f}). "
+                    f"Consider a focused development plan to improve performance in {lowest_area} area while maintaining strengths.")
+        else:
+            st.write("The student shows a balanced performance profile. Consider providing opportunities that build on this balanced foundation while encouraging excellence in all areas.")

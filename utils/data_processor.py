@@ -1,5 +1,4 @@
 import pandas as pd
-import os
 from models.student import Student
 from models.grade_calculator import GradeCalculator
 from utils.excel_adapter import ExcelAdapter
@@ -10,7 +9,7 @@ class DataProcessor:
     """
     def __init__(self):
         """Initialize the data processor with a grade calculator and excel adapter."""
-        self.calculator = GradeCalculator()
+        self.grade_calculator = GradeCalculator()
         self.excel_adapter = ExcelAdapter()
         
     def load_data(self, file_path):
@@ -27,20 +26,18 @@ class DataProcessor:
         pandas.DataFrame
             DataFrame containing student data in the required format
         """
-        file_extension = os.path.splitext(file_path)[1].lower()
-        
-        if file_extension == '.csv':
-            # Load CSV directly
+        if file_path.lower().endswith('.csv'):
+            # Load CSV
             df = pd.read_csv(file_path)
-            return self._validate_and_clean_dataframe(df)
-        
-        elif file_extension in ['.xlsx', '.xls']:
-            # Use the Excel adapter to preprocess the Excel file
-            return self.excel_adapter.preprocess_excel(file_path)
-        
+        elif file_path.lower().endswith(('.xlsx', '.xls')):
+            # Load Excel and preprocess using the adapter
+            df = self.excel_adapter.preprocess_excel(file_path)
         else:
-            raise ValueError(f"Unsupported file format: {file_extension}")
-    
+            raise ValueError("Unsupported file format. Please provide a CSV or Excel file.")
+        
+        # Validate and clean the dataframe
+        return self._validate_and_clean_dataframe(df)
+        
     def _validate_and_clean_dataframe(self, df):
         """
         Validate and clean the DataFrame to ensure it has all required columns.
@@ -55,21 +52,25 @@ class DataProcessor:
         pandas.DataFrame
             Validated and cleaned DataFrame
         """
-        required_columns = ['student_id', 'name', 'academic_score', 'cocurricular_score', 'discipline_score']
+        # Check required columns
+        required_columns = ['student_id', 'name', 'academic_score', 
+                           'cocurricular_score', 'discipline_score']
         
-        # Check if all required columns exist
         missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {missing_columns}")
         
-        # Ensure numeric columns are numeric
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+        
+        # Convert scores to numeric values
         for col in ['academic_score', 'cocurricular_score', 'discipline_score']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-        # Fill any missing values with default scores
-        df['academic_score'] = df['academic_score'].fillna(70)
-        df['cocurricular_score'] = df['cocurricular_score'].fillna(70)
-        df['discipline_score'] = df['discipline_score'].fillna(70)
+        
+        # Remove rows with missing values in required columns
+        df = df.dropna(subset=required_columns)
+        
+        # Ensure scores are within range (0-100)
+        for col in ['academic_score', 'cocurricular_score', 'discipline_score']:
+            df[col] = df[col].clip(0, 100)
         
         return df
     
@@ -90,28 +91,34 @@ class DataProcessor:
         students = []
         
         for _, row in df.iterrows():
-            # Extract required attributes
+            # Get required fields
             student_id = row['student_id']
             name = row['name']
             academic_score = row['academic_score']
             cocurricular_score = row['cocurricular_score']
             discipline_score = row['discipline_score']
             
-            # Extract optional attributes
-            optional_attrs = {}
-            for col in row.index:
-                if col not in ['student_id', 'name', 'academic_score', 'cocurricular_score', 'discipline_score']:
-                    optional_attrs[col] = row[col]
+            # Get optional fields as a dictionary
+            optional_fields = {}
+            for col in df.columns:
+                if col not in ['student_id', 'name', 'academic_score', 
+                              'cocurricular_score', 'discipline_score']:
+                    optional_fields[col] = row[col]
             
-            # Create student object
-            student = Student(student_id, name, academic_score, cocurricular_score, discipline_score, **optional_attrs)
-            
-            # Calculate grades
-            self.calculator.calculate_grades(student)
+            # Create Student object
+            student = Student(
+                student_id=student_id,
+                name=name,
+                academic_score=academic_score,
+                cocurricular_score=cocurricular_score,
+                discipline_score=discipline_score,
+                **optional_fields
+            )
             
             students.append(student)
         
-        return students
+        # Calculate grades for all students
+        return self.grade_calculator.calculate_bulk_grades(students)
     
     def students_to_dataframe(self, students):
         """
@@ -127,8 +134,11 @@ class DataProcessor:
         pandas.DataFrame
             DataFrame containing student data
         """
-        student_dicts = [student.to_dict() for student in students]
-        return pd.DataFrame(student_dicts)
+        # Convert each student to a dictionary
+        data = [student.to_dict() for student in students]
+        
+        # Create DataFrame
+        return pd.DataFrame(data)
     
     def filter_students(self, students, filters):
         """
@@ -148,22 +158,27 @@ class DataProcessor:
         """
         filtered_students = students.copy()
         
-        for attribute, value in filters.items():
-            if attribute in ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']:
-                # Handle range filters for scores
-                min_val, max_val = value
-                filtered_students = [s for s in filtered_students if min_val <= getattr(s, attribute) <= max_val]
-            
-            elif attribute in ['academic_grade', 'cocurricular_grade', 'discipline_grade', 'overall_grade']:
-                # Handle grade filters
-                if isinstance(value, list):
-                    filtered_students = [s for s in filtered_students if getattr(s, attribute) in value]
-                else:
-                    filtered_students = [s for s in filtered_students if getattr(s, attribute) == value]
-            
-            else:
-                # Handle other attributes
-                filtered_students = [s for s in filtered_students if s.get_attribute(attribute) == value]
+        for key, value in filters.items():
+            if key == 'min_academic_score':
+                filtered_students = [s for s in filtered_students if s.academic_score >= value]
+            elif key == 'min_cocurricular_score':
+                filtered_students = [s for s in filtered_students if s.cocurricular_score >= value]
+            elif key == 'min_discipline_score':
+                filtered_students = [s for s in filtered_students if s.discipline_score >= value]
+            elif key == 'min_overall_score':
+                filtered_students = [s for s in filtered_students if s.overall_score >= value]
+            elif key == 'max_academic_score':
+                filtered_students = [s for s in filtered_students if s.academic_score <= value]
+            elif key == 'max_cocurricular_score':
+                filtered_students = [s for s in filtered_students if s.cocurricular_score <= value]
+            elif key == 'max_discipline_score':
+                filtered_students = [s for s in filtered_students if s.discipline_score <= value]
+            elif key == 'max_overall_score':
+                filtered_students = [s for s in filtered_students if s.overall_score <= value]
+            elif key == 'grade':
+                filtered_students = [s for s in filtered_students if s.overall_grade == value]
+            elif key in ['class', 'section', 'batch', 'gender']:
+                filtered_students = [s for s in filtered_students if s.get_attribute(key) == value]
         
         return filtered_students
     
@@ -185,8 +200,18 @@ class DataProcessor:
         list
             Sorted list of Student objects
         """
-        if sort_by in ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']:
-            return sorted(students, key=lambda s: getattr(s, sort_by), reverse=not ascending)
+        if sort_by == 'academic_score':
+            return sorted(students, key=lambda s: s.academic_score, reverse=not ascending)
+        elif sort_by == 'cocurricular_score':
+            return sorted(students, key=lambda s: s.cocurricular_score, reverse=not ascending)
+        elif sort_by == 'discipline_score':
+            return sorted(students, key=lambda s: s.discipline_score, reverse=not ascending)
+        elif sort_by == 'overall_score':
+            return sorted(students, key=lambda s: s.overall_score, reverse=not ascending)
+        elif sort_by == 'name':
+            return sorted(students, key=lambda s: s.name, reverse=not ascending)
+        elif sort_by == 'student_id':
+            return sorted(students, key=lambda s: s.student_id, reverse=not ascending)
         else:
             # Try to sort by optional attribute
             return sorted(students, key=lambda s: s.get_attribute(sort_by, ""), reverse=not ascending)
