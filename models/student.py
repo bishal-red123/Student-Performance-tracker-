@@ -28,16 +28,18 @@ class Student:
         self.cocurricular_score = float(cocurricular_score)
         self.discipline_score = float(discipline_score)
         
-        # Calculated attributes (to be set by GradeCalculator)
-        self.overall_score = 0
-        self.academic_grade = ""
-        self.cocurricular_grade = ""
-        self.discipline_grade = ""
-        self.overall_grade = ""
+        # Grade attributes (to be calculated)
+        self.academic_grade = None
+        self.cocurricular_grade = None
+        self.discipline_grade = None
+        self.overall_score = None
+        self.overall_grade = None
         
         # Optional attributes
-        self.attributes = kwargs
-    
+        self.attributes = {}
+        for key, value in kwargs.items():
+            self.attributes[key] = value
+            
     def get_attribute(self, key, default=None):
         """
         Safely get an optional attribute.
@@ -78,25 +80,26 @@ class Student:
         dict
             Dictionary representation of student
         """
-        # Start with required and calculated attributes
-        result = {
+        # Start with required fields
+        student_dict = {
             'student_id': self.student_id,
             'name': self.name,
             'academic_score': self.academic_score,
             'cocurricular_score': self.cocurricular_score,
             'discipline_score': self.discipline_score,
-            'overall_score': self.overall_score,
             'academic_grade': self.academic_grade,
             'cocurricular_grade': self.cocurricular_grade,
             'discipline_grade': self.discipline_grade,
+            'overall_score': self.overall_score,
             'overall_grade': self.overall_grade
         }
         
         # Add optional attributes
-        result.update(self.attributes)
-        
-        return result
+        for key, value in self.attributes.items():
+            student_dict[key] = value
+            
+        return student_dict
     
     def __repr__(self):
         """String representation of the student."""
-        return f"Student(id={self.student_id}, name={self.name}, overall_score={self.overall_score:.2f}, grade={self.overall_grade})"
+        return f"Student(id={self.student_id}, name={self.name}, overall_grade={self.overall_grade})"

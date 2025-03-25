@@ -32,20 +32,23 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
-        grade_counts = df[column].value_counts().sort_index()
+        # Get grade counts
+        grade_counts = df[column].value_counts().sort_index().reset_index()
+        grade_counts.columns = ['Grade', 'Count']
         
+        # Create figure
         fig = px.bar(
-            x=grade_counts.index,
-            y=grade_counts.values,
-            title=title or f'Distribution of {column}',
-            labels={'x': column, 'y': 'Count'},
-            color=grade_counts.index,
-            color_discrete_sequence=px.colors.qualitative.Set3
+            grade_counts, 
+            x='Grade', 
+            y='Count',
+            color='Grade',
+            title=title or f"Distribution of {column.replace('_', ' ').title()}"
         )
         
+        # Update layout
         fig.update_layout(
-            xaxis_title=column,
-            yaxis_title='Number of Students',
+            xaxis_title="Grade",
+            yaxis_title="Number of Students",
             showlegend=False
         )
         
@@ -72,18 +75,18 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
+        # Create histogram
         fig = px.histogram(
             df, 
-            x=column,
+            x=column, 
             nbins=bins,
-            title=title or f'Distribution of {column}',
-            color_discrete_sequence=['lightblue']
+            title=title or f"Distribution of {column.replace('_', ' ').title()}"
         )
         
+        # Update layout
         fig.update_layout(
-            xaxis_title=column,
-            yaxis_title='Number of Students',
-            bargap=0.1
+            xaxis_title=column.replace('_', ' ').title(),
+            yaxis_title="Number of Students"
         )
         
         return fig
@@ -105,35 +108,31 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
-        # Melt the dataframe to get a format suitable for boxplot
-        score_columns = ['academic_score', 'cocurricular_score', 'discipline_score']
-        melted_df = pd.melt(
-            df, 
-            value_vars=score_columns,
-            var_name='Category', 
-            value_name='Score'
-        )
+        # Melt the dataframe to long format
+        score_cols = ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']
+        melted_df = df[score_cols].melt(var_name='Category', value_name='Score')
         
-        # Rename categories for better readability
-        category_map = {
+        # Format category names
+        melted_df['Category'] = melted_df['Category'].replace({
             'academic_score': 'Academic',
             'cocurricular_score': 'Co-curricular',
-            'discipline_score': 'Discipline'
-        }
-        melted_df['Category'] = melted_df['Category'].map(category_map)
+            'discipline_score': 'Discipline',
+            'overall_score': 'Overall'
+        })
         
+        # Create figure
         fig = px.box(
-            melted_df,
-            x='Category',
+            melted_df, 
+            x='Category', 
             y='Score',
             color='Category',
-            title=title or 'Comparison of Score Categories',
-            color_discrete_sequence=px.colors.qualitative.Safe
+            title=title or "Comparison of Score Categories"
         )
         
+        # Update layout
         fig.update_layout(
-            xaxis_title='',
-            yaxis_title='Score (0-100)',
+            xaxis_title="",
+            yaxis_title="Score",
             showlegend=False
         )
         
@@ -156,23 +155,25 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
+        # Define categories and values
         categories = ['Academic', 'Co-curricular', 'Discipline']
         values = [student.academic_score, student.cocurricular_score, student.discipline_score]
         
-        # Close the radar by appending the first value at the end
+        # Add first point again to close the polygon
         categories = categories + [categories[0]]
         values = values + [values[0]]
         
+        # Create figure
         fig = go.Figure()
         
         fig.add_trace(go.Scatterpolar(
             r=values,
             theta=categories,
             fill='toself',
-            name=student.name,
-            line_color='rgb(31, 119, 180)'
+            name=student.name
         ))
         
+        # Update layout
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
@@ -181,7 +182,7 @@ class Visualizer:
                 )
             ),
             showlegend=False,
-            title=title or f'Performance Profile for {student.name}'
+            title=title or f"Performance Profile: {student.name}"
         )
         
         return fig
@@ -203,30 +204,27 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
+        # Define categories
         categories = ['Academic', 'Co-curricular', 'Discipline']
         
-        # Create radar chart
+        # Create figure
         fig = go.Figure()
         
-        # Color palette for multiple students
-        colors = px.colors.qualitative.Plotly
-        
         # Add trace for each student
-        for i, student in enumerate(students):
+        for student in students:
             values = [student.academic_score, student.cocurricular_score, student.discipline_score]
-            
-            # Close the radar by appending the first value at the end
-            cat = categories + [categories[0]]
-            val = values + [values[0]]
+            # Add first point again to close the polygon
+            values_closed = values + [values[0]]
+            categories_closed = categories + [categories[0]]
             
             fig.add_trace(go.Scatterpolar(
-                r=val,
-                theta=cat,
+                r=values_closed,
+                theta=categories_closed,
                 fill='toself',
-                name=student.name,
-                line_color=colors[i % len(colors)]
+                name=student.name
             ))
         
+        # Update layout
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
@@ -234,14 +232,7 @@ class Visualizer:
                     range=[0, 100]
                 )
             ),
-            title=title or 'Comparative Performance Profiles',
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.2,
-                xanchor="center",
-                x=0.5
-            )
+            title=title or "Comparative Performance Profiles"
         )
         
         return fig
@@ -263,40 +254,25 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
+        # Get numeric columns
+        numeric_cols = ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']
+        
         # Calculate correlation matrix
-        corr_columns = ['academic_score', 'cocurricular_score', 'discipline_score', 'overall_score']
-        corr_df = df[corr_columns].corr()
-        
-        # Rename columns for better readability
-        column_names = {
-            'academic_score': 'Academic',
-            'cocurricular_score': 'Co-curricular',
-            'discipline_score': 'Discipline',
-            'overall_score': 'Overall'
-        }
-        
-        corr_df = corr_df.rename(index=column_names, columns=column_names)
+        corr_matrix = df[numeric_cols].corr()
         
         # Create heatmap
         fig = px.imshow(
-            corr_df,
-            text_auto='.2f',
+            corr_matrix,
+            text_auto=True,
             color_continuous_scale='RdBu_r',
-            title=title or 'Correlation Matrix of Performance Metrics',
-            range_color=[-1, 1],
-            labels=dict(color='Correlation')
+            title=title or "Correlation Matrix"
         )
         
+        # Update layout
         fig.update_layout(
-            xaxis_title='',
-            yaxis_title='',
-            coloraxis_colorbar=dict(
-                title='Correlation',
-                thicknessmode="pixels", thickness=15,
-                lenmode="pixels", len=300,
-                yanchor="top", y=1,
-                ticks="outside", ticksuffix=" "
-            )
+            xaxis_title="",
+            yaxis_title="",
+            coloraxis_showscale=True
         )
         
         return fig
@@ -322,21 +298,45 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
-        # Group by time and calculate mean
-        df_grouped = df.groupby(time_column)[metric_column].mean().reset_index()
+        # Group by time and calculate average
+        grouped = df.groupby(time_column)[metric_column].agg(['mean', 'std', 'count']).reset_index()
         
-        fig = px.line(
-            df_grouped,
-            x=time_column,
-            y=metric_column,
-            markers=True,
-            title=title or f'{metric_column} over {time_column}',
-            color_discrete_sequence=['royalblue']
-        )
+        # Create figure
+        fig = go.Figure()
         
+        # Add mean line
+        fig.add_trace(go.Scatter(
+            x=grouped[time_column],
+            y=grouped['mean'],
+            mode='lines+markers',
+            name='Mean Score',
+            line=dict(color='royalblue', width=2)
+        ))
+        
+        # Add confidence interval
+        fig.add_trace(go.Scatter(
+            x=np.concatenate([grouped[time_column], grouped[time_column][::-1]]),
+            y=np.concatenate([
+                grouped['mean'] + 1.96 * grouped['std'] / np.sqrt(grouped['count']),
+                (grouped['mean'] - 1.96 * grouped['std'] / np.sqrt(grouped['count']))[::-1]
+            ]),
+            fill='toself',
+            fillcolor='rgba(65, 105, 225, 0.2)',
+            line=dict(color='rgba(255,255,255,0)'),
+            name='95% Confidence Interval'
+        ))
+        
+        # Update layout
         fig.update_layout(
-            xaxis_title=time_column,
-            yaxis_title=metric_column
+            title=title or f"{metric_column.replace('_', ' ').title()} Over Time",
+            xaxis_title=time_column.replace('_', ' ').title(),
+            yaxis_title=metric_column.replace('_', ' ').title(),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
+            )
         )
         
         return fig
@@ -364,40 +364,33 @@ class Visualizer:
         plotly.graph_objects.Figure
             Plotly figure object
         """
+        # Format axis titles
+        x_title = x_column.replace('_', ' ').title()
+        y_title = y_column.replace('_', ' ').title()
+        
+        # Create figure
         if color_column:
             fig = px.scatter(
-                df,
-                x=x_column,
+                df, 
+                x=x_column, 
                 y=y_column,
                 color=color_column,
-                title=title or f'{y_column} vs {x_column}',
-                hover_name='name'
+                title=title or f"{y_title} vs {x_title}",
+                trendline="ols"  # Add trendline
             )
         else:
             fig = px.scatter(
-                df,
-                x=x_column,
+                df, 
+                x=x_column, 
                 y=y_column,
-                title=title or f'{y_column} vs {x_column}',
-                hover_name='name',
-                color_discrete_sequence=['royalblue']
+                title=title or f"{y_title} vs {x_title}",
+                trendline="ols"  # Add trendline
             )
         
-        # Add trend line
+        # Update layout
         fig.update_layout(
-            xaxis_title=x_column,
-            yaxis_title=y_column
-        )
-        
-        # Add trend line
-        fig.add_trace(
-            go.Scatter(
-                x=df[x_column],
-                y=np.poly1d(np.polyfit(df[x_column], df[y_column], 1))(df[x_column]),
-                mode='lines',
-                name='Trend',
-                line=dict(color='rgba(255, 0, 0, 0.5)', dash='dash')
-            )
+            xaxis_title=x_title,
+            yaxis_title=y_title
         )
         
         return fig

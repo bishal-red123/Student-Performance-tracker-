@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
 import os
-
-from models.student import Student
-from models.grade_calculator import GradeCalculator
+import tempfile
 from utils.data_processor import DataProcessor
 
-# Set page configuration
+# Configure Streamlit page
 st.set_page_config(
     page_title="Student Grading System",
     page_icon="📊",
@@ -14,47 +12,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state variables if they don't exist
-if "students" not in st.session_state:
-    st.session_state.students = []
-if "dataframe" not in st.session_state:
-    st.session_state.dataframe = None
-if "calculator" not in st.session_state:
-    st.session_state.calculator = GradeCalculator()
-if "processor" not in st.session_state:
+# Initialize session state
+if 'processor' not in st.session_state:
     st.session_state.processor = DataProcessor()
+if 'dataframe' not in st.session_state:
+    st.session_state.dataframe = None
+if 'students' not in st.session_state:
+    st.session_state.students = None
 
-# Application title and description
-st.title("Comprehensive Student Grading System")
+# App title and description
+st.title("Student Grading System")
 st.markdown("""
-This system evaluates student performance based on multiple criteria:
-- Academic Performance
-- Co-curricular Activities
-- Discipline Records
+This application evaluates student performance based on multiple criteria:
+* **Academic Performance**
+* **Co-curricular Activities**
+* **Discipline Records**
+
+Upload your student data file to begin.
 """)
 
-# Sidebar for navigation
+# Sidebar navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
     ["Home", "Dashboard", "Student Profiles", "Statistics"]
 )
 
-# File upload section
-st.sidebar.header("Data Import")
-uploaded_file = st.sidebar.file_uploader("Upload Student Data", type=["csv", "xlsx", "xls"])
+# File uploader in sidebar
+st.sidebar.title("Data Input")
+uploaded_file = st.sidebar.file_uploader("Upload student data (CSV or Excel)", type=["csv", "xlsx", "xls"])
 
+# Process uploaded file
 if uploaded_file is not None:
     try:
-        # Save the uploaded file temporarily
-        with open(f"temp_{uploaded_file.name}", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        file_path = f"temp_{uploaded_file.name}"
+        # Save uploaded file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.'+uploaded_file.name.split('.')[-1]) as tmp:
+            tmp.write(uploaded_file.getvalue())
+            file_path = tmp.name
         
-        # Use the DataProcessor to load and process the file
+        # Load data using the processor
         data = st.session_state.processor.load_data(file_path)
         
-        # Process the data
+        # Store in session state
         st.session_state.dataframe = data
         st.session_state.students = st.session_state.processor.dataframe_to_students(data)
         st.success(f"Successfully loaded data for {len(st.session_state.students)} students!")
@@ -174,3 +173,10 @@ elif page == "Statistics":
     import importlib
     statistics = importlib.import_module("pages.statistics")
     statistics.show()
+
+# Footer
+st.sidebar.markdown('---')
+st.sidebar.info(
+    "Student Grading System v1.0\n\n"
+    "© 2025 All Rights Reserved"
+)

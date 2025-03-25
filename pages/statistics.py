@@ -106,7 +106,8 @@ def show():
         st.write(f"• Students perform best in **{highest_mean}** with an average score of {desc_stats.loc['mean', highest_mean]:.2f}.")
         st.write(f"• Students show lowest performance in **{lowest_mean}** with an average score of {desc_stats.loc['mean', lowest_mean]:.2f}.")
         st.write(f"• The greatest variation is seen in **{highest_std}** scores (std. dev. = {desc_stats.loc['std', highest_std]:.2f}).")
-        st.write(f"• The **{most_skewed}** scores are {skew_direction} skewed ({skew_value:.2f}), indicating {"a longer tail on the upper end" if skew_value > 0 else "a longer tail on the lower end"}.")
+        tail_description = "a longer tail on the upper end" if skew_value > 0 else "a longer tail on the lower end"
+        st.write(f"• The **{most_skewed}** scores are {skew_direction} skewed ({skew_value:.2f}), indicating {tail_description}.")
     
     # Tab 2: Correlation Analysis
     with tab2:
