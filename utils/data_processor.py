@@ -1,14 +1,77 @@
 import pandas as pd
+import os
 from models.student import Student
 from models.grade_calculator import GradeCalculator
+from utils.excel_adapter import ExcelAdapter
 
 class DataProcessor:
     """
     A class for processing student data between different formats.
     """
     def __init__(self):
-        """Initialize the data processor with a grade calculator."""
+        """Initialize the data processor with a grade calculator and excel adapter."""
         self.calculator = GradeCalculator()
+        self.excel_adapter = ExcelAdapter()
+        
+    def load_data(self, file_path):
+        """
+        Load data from a file (CSV or Excel) and convert to a DataFrame.
+        
+        Parameters:
+        -----------
+        file_path : str
+            Path to the data file
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            DataFrame containing student data in the required format
+        """
+        file_extension = os.path.splitext(file_path)[1].lower()
+        
+        if file_extension == '.csv':
+            # Load CSV directly
+            df = pd.read_csv(file_path)
+            return self._validate_and_clean_dataframe(df)
+        
+        elif file_extension in ['.xlsx', '.xls']:
+            # Use the Excel adapter to preprocess the Excel file
+            return self.excel_adapter.preprocess_excel(file_path)
+        
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+    
+    def _validate_and_clean_dataframe(self, df):
+        """
+        Validate and clean the DataFrame to ensure it has all required columns.
+        
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            The DataFrame to validate and clean
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            Validated and cleaned DataFrame
+        """
+        required_columns = ['student_id', 'name', 'academic_score', 'cocurricular_score', 'discipline_score']
+        
+        # Check if all required columns exist
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}")
+        
+        # Ensure numeric columns are numeric
+        for col in ['academic_score', 'cocurricular_score', 'discipline_score']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+        # Fill any missing values with default scores
+        df['academic_score'] = df['academic_score'].fillna(70)
+        df['cocurricular_score'] = df['cocurricular_score'].fillna(70)
+        df['discipline_score'] = df['discipline_score'].fillna(70)
+        
+        return df
     
     def dataframe_to_students(self, df):
         """

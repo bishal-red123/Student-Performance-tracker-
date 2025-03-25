@@ -46,30 +46,26 @@ uploaded_file = st.sidebar.file_uploader("Upload Student Data", type=["csv", "xl
 
 if uploaded_file is not None:
     try:
-        # Try to load the data based on file type
-        if uploaded_file.name.endswith('.csv'):
-            data = pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-            data = pd.read_excel(uploaded_file)
+        # Save the uploaded file temporarily
+        with open(f"temp_{uploaded_file.name}", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        file_path = f"temp_{uploaded_file.name}"
         
-        required_columns = [
-            'student_id', 'name', 'academic_score', 
-            'cocurricular_score', 'discipline_score'
-        ]
+        # Use the DataProcessor to load and process the file
+        data = st.session_state.processor.load_data(file_path)
         
-        # Check if all required columns are present
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            st.error(f"Missing required columns: {', '.join(missing_columns)}")
-        else:
-            # Process the data
-            st.session_state.dataframe = data
-            st.session_state.students = st.session_state.processor.dataframe_to_students(data)
-            st.success(f"Successfully loaded data for {len(st.session_state.students)} students!")
-            
-            # Show sample of the data
-            st.subheader("Preview of Uploaded Data")
-            st.dataframe(data.head())
+        # Process the data
+        st.session_state.dataframe = data
+        st.session_state.students = st.session_state.processor.dataframe_to_students(data)
+        st.success(f"Successfully loaded data for {len(st.session_state.students)} students!")
+        
+        # Clean up the temporary file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        # Show sample of the data
+        st.subheader("Preview of Uploaded Data")
+        st.dataframe(data.head())
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
 

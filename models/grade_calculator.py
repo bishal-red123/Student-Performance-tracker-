@@ -14,27 +14,35 @@ class GradeCalculator:
             Custom grade scale for score to grade conversion
         """
         # Default weights for different metrics
-        self.weights = weights or {
-            'academic': 0.6,
-            'cocurricular': 0.2,
-            'discipline': 0.2
+        self.weights = {
+            'academic': 0.5,      # 50% weight for academic performance
+            'cocurricular': 0.3,  # 30% weight for co-curricular activities
+            'discipline': 0.2     # 20% weight for discipline record
         }
         
         # Default grade scale
-        self.grade_scale = grade_scale or {
-            'A+': 95,  # 95-100
-            'A': 90,   # 90-94.99
-            'A-': 85,  # 85-89.99
-            'B+': 80,  # 80-84.99
-            'B': 75,   # 75-79.99
-            'B-': 70,  # 70-74.99
-            'C+': 65,  # 65-69.99
-            'C': 60,   # 60-64.99
-            'C-': 55,  # 55-59.99
-            'D+': 50,  # 50-54.99
-            'D': 45,   # 45-49.99
-            'F': 0     # 0-44.99
+        self.grade_scale = {
+            'A+': 95,  # Score >= 95
+            'A': 90,   # Score >= 90
+            'A-': 85,  # Score >= 85
+            'B+': 80,  # Score >= 80
+            'B': 75,   # Score >= 75
+            'B-': 70,  # Score >= 70
+            'C+': 65,  # Score >= 65
+            'C': 60,   # Score >= 60
+            'C-': 55,  # Score >= 55
+            'D+': 50,  # Score >= 50
+            'D': 45,   # Score >= 45
+            'F': 0     # Score >= 0
         }
+        
+        # Update weights if provided
+        if weights:
+            self.weights.update(weights)
+            
+        # Update grade scale if provided
+        if grade_scale:
+            self.grade_scale.update(grade_scale)
     
     def calculate_overall_score(self, student):
         """
@@ -50,13 +58,14 @@ class GradeCalculator:
         float
             The overall weighted score
         """
-        overall_score = (
+        # Calculate weighted score
+        weighted_score = (
             self.weights['academic'] * student.academic_score +
             self.weights['cocurricular'] * student.cocurricular_score +
             self.weights['discipline'] * student.discipline_score
         )
         
-        return overall_score
+        return weighted_score
     
     def get_grade(self, score):
         """
@@ -72,10 +81,16 @@ class GradeCalculator:
         str
             Letter grade based on the grade scale
         """
-        for grade, min_score in sorted(self.grade_scale.items(), key=lambda x: x[1], reverse=True):
-            if score >= min_score:
+        # Sort grade thresholds in descending order
+        sorted_grades = sorted(self.grade_scale.items(), key=lambda x: x[1], reverse=True)
+        
+        # Find the appropriate grade
+        for grade, threshold in sorted_grades:
+            if score >= threshold:
                 return grade
-        return 'F'  # Default if score is below all thresholds
+                
+        # Default grade for scores below lowest threshold
+        return 'F'
     
     def calculate_grades(self, student):
         """
@@ -91,15 +106,13 @@ class GradeCalculator:
         Student
             The updated student object with calculated grades
         """
-        # Calculate overall score
-        student.overall_score = self.calculate_overall_score(student)
-        
         # Calculate individual grades
         student.academic_grade = self.get_grade(student.academic_score)
         student.cocurricular_grade = self.get_grade(student.cocurricular_score)
         student.discipline_grade = self.get_grade(student.discipline_score)
         
-        # Calculate overall grade
+        # Calculate overall score and grade
+        student.overall_score = self.calculate_overall_score(student)
         student.overall_grade = self.get_grade(student.overall_score)
         
         return student
@@ -130,12 +143,6 @@ class GradeCalculator:
             New weights for different performance metrics
         """
         self.weights.update(new_weights)
-        
-        # Normalize weights to ensure they sum to 1
-        total = sum(self.weights.values())
-        if total != 1.0:
-            for key in self.weights:
-                self.weights[key] /= total
     
     def update_grade_scale(self, new_grade_scale):
         """
