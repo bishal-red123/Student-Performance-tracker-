@@ -42,12 +42,15 @@ page = st.sidebar.radio(
 
 # File upload section
 st.sidebar.header("Data Import")
-uploaded_file = st.sidebar.file_uploader("Upload Student Data (CSV)", type=["csv"])
+uploaded_file = st.sidebar.file_uploader("Upload Student Data", type=["csv", "xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
-        # Try to load the data
-        data = pd.read_csv(uploaded_file)
+        # Try to load the data based on file type
+        if uploaded_file.name.endswith('.csv'):
+            data = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+            data = pd.read_excel(uploaded_file)
         
         required_columns = [
             'student_id', 'name', 'academic_score', 
@@ -86,7 +89,7 @@ if st.session_state.dataframe is not None:
 if page == "Home":
     # Home page content
     if st.session_state.dataframe is None:
-        st.info("👈 Please upload a CSV file with student data to begin.")
+        st.info("👈 Please upload a file (CSV or Excel) with student data to begin.")
         
         # Example data format
         st.subheader("Expected Data Format")
